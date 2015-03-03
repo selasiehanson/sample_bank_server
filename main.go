@@ -138,9 +138,27 @@ func main() {
 	accounts.Methods("POST").HandlerFunc(appDb.createClientsHandler)
 
 	account := r.PathPrefix("/accounts/{id}").Subrouter()
-	account.Methods("GET").HandlerFunc(accountHandler)
+	account.Methods("GET").HandlerFunc(appDb.accountHandler)
+	account.Methods("PUT").HandlerFunc(appDb.updateAccountHandler)
+	account.Methods("DELETE").HandlerFunc(appDb.deleteHandler)
 
 	http.ListenAndServe(":8050", c.Handler(r))
+}
+
+func writeJSONResponse(rw http.ResponseWriter, js []byte, tag string) {
+	rw.Header().Set("Content-type", "application/json")
+	fmt.Println(tag)
+	rw.Write(js)
+}
+
+func getID(req *http.Request) int64 {
+	vars := mux.Vars(req)
+	idString := vars["id"]
+	id, err := strconv.ParseInt(idString, 10, 0)
+	if err != nil {
+		panic(err)
+	}
+	return id
 }
 
 func (appDb *AppDb) accountsHandler(rw http.ResponseWriter, r *http.Request) {
@@ -152,35 +170,66 @@ func (appDb *AppDb) accountsHandler(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 	}
 
-	rw.Header().Set("Content-type", "application/json")
-	fmt.Println("rw", "accounts")
-	rw.Write(js)
+	writeJSONResponse(rw, js, "accounts")
 }
 
-func accountHandler(rw http.ResponseWriter, r *http.Request) {
+func (appDb *AppDb) accountHandler(rw http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	fmt.Println("rw", "accounts", id)
-}
 
-func (appDb *AppDb) createClientsHandler(rw http.ResponseWriter, r *http.Request) {
-	//params := mux.Vars(r)
-	var client Client
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&client)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Creating")
-
-	fmt.Println("params are .... ")
-	fmt.Printf("%+v\n", client)
-
-	appDb.Db.Save(&client)
-
-	rw.Header().Set("Content-type", "application/json")
+	client := Client{}
+	appDb.Db.First(&client, id)
 	js, err := json.Marshal(client)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 	}
-	rw.Write(js)
+
+	writeJSONResponse(rw, js, "client")
+}
+
+func (appDb *AppDb) createClientsHandler(rw http.ResponseWriter, r *http.Request) {
+
+	appDb.processEditAccountHandlder(rw, r, 0)
+}
+
+func (appDb *AppDb) updateAccountHandler(rw http.ResponseWriter, r *http.Request) {
+	// id := mux.Vars(r)["id"]
+	id, err := strconv.ParseInt(mux.Vars(r)["id"], 10, 64)
+
+	if err != nil {
+		panic(err)
+	}
+
+	appDb.processEditAccountHandlder(rw, r, id)
+}
+
+func (appDb *AppDb) processEditAccountHandlder(rw http.ResponseWriter, r *http.Request, id int64) {
+	var client Client
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&client)
+
+	if err != nil {
+		panic(err)
+	}
+
+	client.ID = id
+
+	appDb.Db.Save(&client)
+
+	js, err := json.Marshal(client)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+	}
+	writeJSONResponse(rw, js, "client")
+}
+
+func (appDb *AppDb) deleteHandler(rw http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(mux.Vars(r)["id"], 10, 64)
+
+	if err != nil {
+		panic(err)
+	}
+
+	client := Client{}
+	appDb.Db.Delete(&client, id)
+	rw.WriteHeader(http.StatusOK)
 }
